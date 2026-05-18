@@ -1,0 +1,29 @@
+# Build outputs
+build/
+build-debug/
+build-release/
+out/
+
+# Runtime artifacts
+logs/
+*.log
+*.wpix
+*.rdc
+
+# Editor / IDE
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.sdf
+*.opensdf
+
+# CMake
+CMakeUserPresets.json
+CMakeCache.txt
+CMakeFiles/
+
+# OS
+Thumbs.db
+.DS_Store
