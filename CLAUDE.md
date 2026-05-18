@@ -244,7 +244,7 @@ brainstorming → writing-plans
 ### 子项目 0：Harness（46 步）
 
 **Phase A — Bootstrap**
-- [ ] 01 CMake 最小 hello-world
+- [x] 01 CMake 最小 hello-world — [Docs/01-cmake-hello](Docs/01-cmake-hello/README.md)
 - [ ] 02 引入 GLFW
 - [ ] 03 GLFW 窗口生命周期
 - [ ] 04 DXGI Factory + Adapter 枚举
