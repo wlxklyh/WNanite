@@ -55,4 +55,4 @@ add_executable(wnanite
 )
 
 # === 链接第三方 ===
-target_link_libraries(wnanite PRIVATE glfw dxgi)
+target_link_libraries(wnanite PRIVATE glfw dxgi d3d12)

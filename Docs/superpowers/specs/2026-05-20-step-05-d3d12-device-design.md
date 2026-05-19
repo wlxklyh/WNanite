@@ -1,3 +1,57 @@
+# 步 05 — D3D12 Device + Feature Level / SM 检测 设计文档
+
+**日期**：2026-05-20
+**作者**：linyanhou98@gmail.com + Claude
+**状态**：草案（待用户审阅）
+**附属于**：`Docs/superpowers/specs/2026-05-19-wnanite-harness-design.md` §5 Phase A 步 05
+
+---
+
+## 1. 目标
+
+WNanite **第一次创建 `ID3D12Device`**——选一张 adapter、调 `D3D12CreateDevice` 创设备、用 `CheckFeatureSupport` 探测一组能力，验证 **Nanite 硬门槛**：
+
+- Max Shader Model ≥ `D3D_SHADER_MODEL_6_6`
+- Resource Binding Tier ≥ 3（Bindless 必需）
+
+任一不达标立即 stderr 报错 + `return 1`。门槛过则继续到窗口循环。
+
+**仍不开 Debug Layer（步 06）**。**仍不创 Command Queue / SwapChain（步 07+）**。
+
+## 2. 已锁定的技术决策
+
+| 维度 | 决定 | 理由 |
+|---|---|---|
+| 选 adapter 策略 | 在枚举循环里选**第一张非 `DXGI_ADAPTER_FLAG_SOFTWARE`** 的 | 步 04 实测 `[0]` 即 NVIDIA 独显；跳 software 防 WARP 自动选 |
+| `D3D12CreateDevice` 的 MinFeatureLevel | `D3D_FEATURE_LEVEL_12_0` | UE `D3D12Adapter.cpp:1350` Nanite 实际门槛 = 12_0（不是 12_2） |
+| SM 探测算法 | "从高到低试"——`D3D_SHADER_MODEL_6_9` → 6_8 → ... → 6_0；第一个成功的就是 max | 与 UE `WindowsD3D12Device.cpp:173 FindHighestShaderModel` 一致；`CheckFeatureSupport` 的 `HighestShaderModel` 必须给目标 SM 作输入 hint |
+| 顺带探测的能力 | Max Feature Level / SM / Binding Tier / Heap Tier / Wave Ops / AtomicInt64 / Mesh Shader Tier / VRS Tier | 学习项目顺手打能力报告；后续步要用时不用再查 |
+| Nanite 硬门槛 | `SM >= 6.6 && BindingTier >= 3` | UE 实证（`D3D12Adapter.cpp:1076, 1350`）；同时 SM 6.6 + Tier 3 才支持 `ResourceDescriptorHeap` |
+| 门槛不过 | stderr 红字打印 + `return 1` | 跑不动就早退，浪费时间在不能用的硬件上 |
+| Debug Layer | **不开** | 步 06 一并开 D3D12 + DXGI Debug |
+| 代码组织 | 内联 main.cpp，新增 5 个匿名 namespace helper：`pick_adapter` / `create_device` / `query_caps` / `log_caps` / `check_nanite_gate` | 学习项目 YAGNI；累积到 ~300 行后再拆模块（预计步 ≥ 08） |
+| CMake 链接 | `target_link_libraries(... PRIVATE glfw dxgi d3d12)` | `D3D12CreateDevice` 来自 d3d12.lib |
+| Adapter 选择反馈 | 跑步骤打印 `Selected adapter: [<i>] <description>` | 用户一眼看到选了哪张 |
+
+## 3. 文件改动清单
+
+| 文件 | 动作 | 关键变化 |
+|------|------|---------|
+| `CMakeLists.txt` | 修改 | `target_link_libraries(... PRIVATE glfw dxgi d3d12)` |
+| `src/main.cpp` | 大改 | 拆 `log_dxgi_adapters` 为 `pick_adapter`；新增 `create_device` / `query_caps` / `log_caps` / `check_nanite_gate`；main 串起流水线；加 `<d3d12.h>` 头 |
+| `Docs/05-d3d12-device/` | 新建目录 | README 七节 + ue5-refs（重点引 UE FindHighestShaderModel + Nanite 门槛常量）+ screenshots/.gitkeep |
+| `CLAUDE.md` | 修改 | §10 步 05 由 `[ ]` 改 `[x]` |
+
+## 4. CMakeLists.txt diff
+
+```diff
+- target_link_libraries(wnanite PRIVATE glfw dxgi)
++ target_link_libraries(wnanite PRIVATE glfw dxgi d3d12)
+```
+
+## 5. src/main.cpp 完整新版本
+
+```cpp
 // WNanite — 主入口
 // 当前阶段：步 05 — D3D12 Device 创建 + Feature Level / SM 检测。
 // 第一次创 ID3D12Device；仍不开 Debug Layer（步 06），不创 Command Queue（步 07）。
@@ -95,7 +149,7 @@ namespace
             desc.Flags, is_software ? " [SOFTWARE]" : "");
     }
 
-    // ===== Adapter 选择（保留 step 04 打印 + 新增选择逻辑） =====
+    // ===== Step 04 行为 + Step 05 选择 =====
 
     struct AdapterChoice
     {
@@ -190,6 +244,7 @@ namespace
         DeviceCaps caps;
 
         // --- Max Feature Level ---
+        // 从 12_2 → 11_0 试，取第一个 supported。
         // D3D12_FEATURE_DATA_FEATURE_LEVELS 接受候选列表，driver 选最高支持的。
         D3D_FEATURE_LEVEL candidates[] = {
             D3D_FEATURE_LEVEL_12_2,
@@ -288,8 +343,9 @@ namespace
             caps.binding_tier,
             caps.binding_tier >= 3 ? "      [BINDLESS-CAPABLE]" : "");
         std::printf("    Resource Heap Tier:       %u\n", caps.heap_tier);
-        std::printf("    Wave Ops:                 %s\n",
-            caps.wave_ops ? "yes" : "no");
+        std::printf("    Wave Ops:                 %s%s\n",
+            caps.wave_ops ? "yes" : "no",
+            caps.wave_ops ? "" : "");
         if (caps.wave_ops)
         {
             std::printf("      Lane count:             %u..%u\n",
@@ -297,14 +353,9 @@ namespace
         }
         std::printf("    AtomicInt64 on typed RT:  %s\n",
             caps.atomic_int64_typed ? "yes" : "no");
-        // D3D12_MESH_SHADER_TIER_1 = 10（不是 1！MS 给未来 Tier 2..N 留 enum 值空间）
-        // 把原始 enum 值 0/10 显示为人类友好的 NOT_SUPPORTED / 1
-        const char* ms_str =
-            caps.mesh_shader_tier == 0  ? "NOT_SUPPORTED" :
-            caps.mesh_shader_tier == 10 ? "1"             : "?";
-        std::printf("    Mesh Shader Tier:         %s%s\n",
-            ms_str,
-            caps.mesh_shader_tier >= 10 ? "      [MESH-SHADER-CAPABLE]" : "");
+        std::printf("    Mesh Shader Tier:         %u%s\n",
+            caps.mesh_shader_tier,
+            caps.mesh_shader_tier >= 1 ? "      [MESH-SHADER-CAPABLE]" : "");
         std::printf("    Variable Rate Shading:    Tier %u\n", caps.vrs_tier);
     }
 
@@ -397,3 +448,79 @@ int main()
     glfwTerminate();
     return 0;
 }
+```
+
+## 6. 预期 stdout
+
+```
+hello, WNanite!
+GLFW 3.4.0 Win32 WGL Null EGL OSMesa VisualC
+DXGI adapters (by HIGH_PERFORMANCE):
+[0] NVIDIA GeForce RTX 5060
+    Vendor: NVIDIA (0x10DE)  Device: 0x2D05
+    VRAM: 7895 MB  Shared: 31516 MB
+    LUID: 0x00000000:0x00012AC8
+    Flags: 0x00000000
+[1] AMD Radeon(TM) Graphics
+    ...
+[2] Microsoft Basic Render Driver
+    ...
+    Flags: 0x00000002 [SOFTWARE]
+...
+Selected adapter: [0] NVIDIA GeForce RTX 5060
+Creating D3D12 device at Feature Level 12.0 ... OK
+Device capabilities:
+    Max Feature Level:        12.2
+    Max Shader Model:         6.7
+    Resource Binding Tier:    3      [BINDLESS-CAPABLE]
+    Resource Heap Tier:       2
+    Wave Ops:                 yes
+      Lane count:             32..32
+    AtomicInt64 on typed RT:  yes
+    Mesh Shader Tier:         1      [MESH-SHADER-CAPABLE]
+    Variable Rate Shading:    Tier 2
+Nanite gate (SM>=6.6 AND BindingTier>=3): PASS
+```
+
+具体能力按机器变化；RTX 5060 应该都 PASS。
+
+## 7. 验证
+
+- **编译**：Debug + Release 双 preset 通过，`main.cpp` `/W4 /permissive-` 零警告
+- **运行**：stdout 含完整流水线输出 + `Nanite gate: PASS` + 窗口可开/可关 + `EXIT:0`
+- **回归**：步 04 DXGI 区块仍输出，行为不变
+- **故意失败测试**（spec 验证设计的鲁棒性，不在 plan 里强制做）：把 `pick_adapter` 的 `!is_software` 改成 `is_software` 强制选 WARP → 预期 `Nanite gate: FAIL` + exit 1
+- 不写单测；无 golden image；无 ai-learn
+
+## 8. UE5 对照（关键引用）
+
+- `D:\LYH\UE\Engine\Source\Runtime\D3D12RHI\Private\Windows\WindowsD3D12Device.cpp:173-200` — `FindHighestShaderModel`：从高到低试 SM 候选，第一个 SUCCESS 即 max
+- `D:\LYH\UE\Engine\Source\Runtime\D3D12RHI\Private\D3D12Adapter.cpp:1076` — 注释明确：`ResourceDescriptorHeap/SamplerDescriptorHeap must be supported on devices that support both D3D12_RESOURCE_BINDING_TIER_3 and D3D_SHADER_MODEL_6_6`
+- `D:\LYH\UE\Engine\Source\Runtime\D3D12RHI\Private\D3D12Adapter.cpp:1350` — Nanite 实际门槛：`MaxSupportedFeatureLevel >= D3D_FEATURE_LEVEL_12_0 && MaxSupportedShaderModel >= D3D_SHADER_MODEL_6_6 && ResourceBindingTier >= D3D12_RESOURCE_BINDING_TIER_3`
+
+`ue5-refs.md` 会完整记录这些。
+
+## 9. 风险
+
+| 风险 | 影响 | 缓解 |
+|---|---|---|
+| 用户机器 SM < 6.6（老 GTX 10 系列等） | Nanite gate FAIL | 清晰报错 + exit 1，比 silent crash 好 |
+| `CheckFeatureSupport` 对新结构体不支持 | E_INVALIDARG，对应字段保留默认值 | 全用 `SUCCEEDED(...)` 包裹，失败保留默认。所选用的 OPTIONS / OPTIONS1 / OPTIONS6 / OPTIONS7 / OPTIONS9 都在 Win10 1903+ 稳定 |
+| 硬件 SM > 6.7 但 SDK 22621 看不见 | `query_caps` 报告的 max SM 上限被 SDK 卡在 6.7（即使 RTX 5060 实际支持 6.8）| 不影响 Nanite gate（≥6.6 即过）。如要看到真上限，需升级到 Windows SDK 10.0.26100+ 或集成 D3D12 Agility SDK——留作后置改进 |
+| Adapter 真有 0 张（极端 VM 无 GPU 无 WARP） | `pick_adapter` 失败 + exit 1 | 应该不会发生（WARP 至少在；但因为我们跳 software，确实 0 张物理 GPU 时会 FAIL）。学习项目门槛接受 |
+
+## 10. 范围外（明确）
+
+- 不开 Debug Layer（步 06）
+- 不创 Command Queue / Allocator / List（步 07）
+- 不创 SwapChain（步 08）
+- 不做 adapter 选择 UI / 命令行覆盖（YAGNI；步 ≥ 30 imgui 接入后再考虑）
+- 不去重同 LUID 多 adapter（步 04 已识别该问题）
+- 不持久化 device / chosen adapter 到全局（学习项目 main 持有，作用域随 main 退出）
+- 不查询：D3D12_FEATURE_DATA_ROOT_SIGNATURE_HIGHEST_VERSION / D3D12_FEATURE_DATA_D3D12_OPTIONS19+ / Sampler Feedback Tier / Raytracing Tier 等（学习项目本步够用）
+
+## 11. 下一步流程
+
+1. 用户审阅
+2. 调 `superpowers:writing-plans` 出实施计划
+3. inline 执行 + 验证 + Docs + step-05 commit + push origin

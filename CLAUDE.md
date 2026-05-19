@@ -255,7 +255,7 @@ brainstorming → writing-plans
 - [x] 02 引入 GLFW — [Docs/02-glfw-bringup](Docs/02-glfw-bringup/README.md)
 - [x] 03 GLFW 窗口生命周期 — [Docs/03-window-lifecycle](Docs/03-window-lifecycle/README.md)
 - [x] 04 DXGI Factory + Adapter 枚举 — [Docs/04-dxgi-enum](Docs/04-dxgi-enum/README.md)
-- [ ] 05 D3D12 Device + Feature Level / SM 检测
+- [x] 05 D3D12 Device + Feature Level / SM 检测 — [Docs/05-d3d12-device](Docs/05-d3d12-device/README.md)
 - [ ] 06 Debug Layer + GPU-Based Validation
 - [ ] 07 Command Queue + Fence 单帧
 - [ ] 08 DXGI SwapChain
