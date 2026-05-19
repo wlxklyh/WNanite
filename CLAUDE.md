@@ -16,6 +16,8 @@ WNanite 是一个 **学习项目**：从零写 DX12 沙盒，复刻 UE5 Nanite �
 - 子项目地图（0→6）：见设计文档 §2
 - 当前已完成步骤：见本文件 §10
 
+**UE5 源码本地参考**：`D:\LYH\UE`（UE 5.6.1，分支 `W0+Main`）。完整 `D3D12RHI` / `Renderer/Private/Nanite` / `RHI` / `RenderCore` / `ApplicationCore` 源码在本地——这是本项目"复刻 UE5 Nanite"目标的权威参考。具体使用规则见 §1。
+
 ---
 
 ## §1 核心原则
@@ -27,6 +29,11 @@ WNanite 是一个 **学习项目**：从零写 DX12 沙盒，复刻 UE5 Nanite �
 **根因优先。** 遇到障碍不要用破坏性手段绕过（`--no-verify`、`reset --hard`、删 lock 文件等），先查根因。
 
 **小步前进。** 1 步 = 1 主题，工作量 < 1 小时。详见 §3。
+
+**遇事不决查 UE5。** DX12 / RHI / Nanite / RDG 任何"应该怎么写才地道"的不确定，优先到 `D:\LYH\UE\Engine\Source` 看 UE5 怎么实现。三条边界：
+- **看**：用 Read 工具读 UE5 文件、引用 `file:line` 到 `Docs/NN-<topic>/ue5-refs.md`
+- **不复制**：UE5 是 Source-Available License，不复制代码进本仓库；仅引用 + 用自己的话复述
+- **不盲从**：UE5 路径包含大量历史包袱（兼容老硬件、多 RHI 后端、Slate/Game Thread 耦合等），学习项目可以简化。**理解 > 模仿**
 
 ---
 
