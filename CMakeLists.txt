@@ -30,7 +30,29 @@ if(MSVC)
     )
 endif()
 
+# === 第三方依赖（FetchContent） ===
+include(FetchContent)
+
+# --- GLFW 3.4 ---
+# 关掉 GLFW 自带的非核心子目标，缩短首次 configure 时间且避免污染目标列表。
+set(GLFW_BUILD_DOCS     OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_TESTS    OFF CACHE BOOL "" FORCE)
+set(GLFW_INSTALL        OFF CACHE BOOL "" FORCE)
+
+FetchContent_Declare(
+    glfw
+    GIT_REPOSITORY https://github.com/glfw/glfw.git
+    GIT_TAG        3.4
+    GIT_SHALLOW    TRUE
+    SYSTEM                          # CMake 3.25+：把 GLFW include 路径标为 SYSTEM，屏蔽其内部 /W4 警告
+)
+FetchContent_MakeAvailable(glfw)
+
 # === 可执行目标 ===
 add_executable(wnanite
     src/main.cpp
 )
+
+# === 链接第三方 ===
+target_link_libraries(wnanite PRIVATE glfw)

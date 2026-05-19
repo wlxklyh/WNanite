@@ -245,7 +245,7 @@ brainstorming → writing-plans
 
 **Phase A — Bootstrap**
 - [x] 01 CMake 最小 hello-world — [Docs/01-cmake-hello](Docs/01-cmake-hello/README.md)
-- [ ] 02 引入 GLFW
+- [x] 02 引入 GLFW — [Docs/02-glfw-bringup](Docs/02-glfw-bringup/README.md)
 - [ ] 03 GLFW 窗口生命周期
 - [ ] 04 DXGI Factory + Adapter 枚举
 - [ ] 05 D3D12 Device + Feature Level / SM 检测
